@@ -82,7 +82,6 @@ void PrintIntArena(Arena *arena)
     printf("\n");
 }
 
-
 void WriteU8Texture(u32 *buffer, u32 pitch_in_pixels, u8 *bitmap, u32 bitmap_width, u32 bitmap_height)
 {
     u32 *row_ptr = buffer;
@@ -109,6 +108,9 @@ void WriteU8Texture(u32 *buffer, u32 pitch_in_pixels, u8 *bitmap, u32 bitmap_wid
     }
 }
 
+#define ASCII_OFFSET 32
+#define NUM_OF_CHAR 96
+
 int main()
 {
     Arena memory = {};
@@ -130,16 +132,16 @@ int main()
     stbtt_fontinfo font;
     stbtt_InitFont(&font, ttf_buffer, stbtt_GetFontOffsetForIndex(ttf_buffer, 0));
     
-    u8 *bitmap[128];
-    i32 bitmap_width[128];
-    i32 bitmap_height[128];
+    u8 *bitmap[NUM_OF_CHAR];
+    i32 bitmap_width[NUM_OF_CHAR];
+    i32 bitmap_height[NUM_OF_CHAR];
     
     u32 max_bitmap_width = 0;
     u32 max_bitmap_height = 0;
 
-    for(int i = 0; i < 128; ++i)
+    for(int i = 0; i < NUM_OF_CHAR; ++i)
     {
-        bitmap[i] = stbtt_GetCodepointBitmap(&font, 0, stbtt_ScaleForPixelHeight(&font, 200), (char)(i), &bitmap_width[i], &bitmap_height[i], 0, 0);
+        bitmap[i] = stbtt_GetCodepointBitmap(&font, 0, stbtt_ScaleForPixelHeight(&font, 200), (char)(i+ASCII_OFFSET), &bitmap_width[i], &bitmap_height[i], 0, 0);
         max_bitmap_width = bitmap_width[i] > max_bitmap_width ? bitmap_width[i] : max_bitmap_width;
         max_bitmap_height = bitmap_height[i] > max_bitmap_height ? bitmap_height[i] : max_bitmap_height;
     }
@@ -147,11 +149,12 @@ int main()
     EndTempArena(&file_arena);
     
     i32 atlas_col = 16;
-    i32 atlas_rows = 8;
+    i32 atlas_rows = 6;
     u32 atlas_width = atlas_col *  max_bitmap_width; 
     u32 atlas_height = atlas_rows * max_bitmap_height; 
     size_t atlas_size = atlas_width*atlas_height*sizeof(u32);
     
+    printf("glyph bitmap w:%d, h:%d\n", max_bitmap_width, max_bitmap_height);
     printf("atlas w:%d, h:%d\n", atlas_width, atlas_height);
     printf("size: %zu\n", atlas_size);
     
@@ -165,7 +168,7 @@ int main()
         u32 *col_ptr = row_ptr;
         for(i32 col = 0; col < atlas_col; ++col)
         {
-            i32 bitmap_index = (row*16+col);
+            i32 bitmap_index = (row*atlas_col+col);
             WriteU8Texture(col_ptr, atlas_width, bitmap[bitmap_index], bitmap_width[bitmap_index], bitmap_height[bitmap_index]);
             
             col_ptr += max_bitmap_width;
