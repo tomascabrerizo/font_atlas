@@ -36,6 +36,18 @@ typedef struct
     Arena *arena;
 } TempArena;
 
+typedef struct
+{
+    f32 x;
+    f32 y;
+} v2f;
+
+typedef struct
+{
+    v2f min;
+    v2f max;
+} Rectf;
+
 #define KYLOBYTES(a) ((a)*1024LL)
 #define MEGABYTES(a) (KYLOBYTES(a)*1024LL)
 
@@ -108,6 +120,22 @@ void WriteU8Texture(u32 *buffer, u32 pitch_in_pixels, u8 *bitmap, u32 bitmap_wid
     }
 }
 
+void WriteTextureCoordinates(Rectf *coords, u32 coord_index, u32 col, u32 row, u32 max_width, u32 max_height, 
+                             u32 atlas_width, u32 atlas_height, u32 width, u32 height)
+{
+    v2f min = {col*max_width, row*max_height};
+    v2f max = {min.x+width, min.y+height};
+    
+    Rectf result = {};
+    
+    result.min.x = min.x / atlas_width;
+    result.min.y = min.y / atlas_height;
+    result.max.x = max.x / atlas_width;
+    result.max.y = max.y / atlas_height;
+
+    coords[coord_index] = result; 
+}
+
 #define ASCII_OFFSET 32
 #define NUM_OF_CHAR 96
 
@@ -131,19 +159,34 @@ int main()
     
     stbtt_fontinfo font;
     stbtt_InitFont(&font, ttf_buffer, stbtt_GetFontOffsetForIndex(ttf_buffer, 0));
-    
+   
+    f32 scale = stbtt_ScaleForPixelHeight(&font, 200);
+
     u8 *bitmap[NUM_OF_CHAR];
     i32 bitmap_width[NUM_OF_CHAR];
     i32 bitmap_height[NUM_OF_CHAR];
+    
+    i32 bitmap_advance[NUM_OF_CHAR];
+    
+    i32 bitmap_ascent, bitmap_descent, bitmap_linegap;
+    stbtt_GetFontVMetrics(&font, &bitmap_ascent, &bitmap_descent, &bitmap_linegap);
+    bitmap_ascent *= scale;
+    bitmap_descent *= scale;
+    bitmap_linegap *= scale;
     
     u32 max_bitmap_width = 0;
     u32 max_bitmap_height = 0;
 
     for(int i = 0; i < NUM_OF_CHAR; ++i)
     {
-        bitmap[i] = stbtt_GetCodepointBitmap(&font, 0, stbtt_ScaleForPixelHeight(&font, 200), (char)(i+ASCII_OFFSET), &bitmap_width[i], &bitmap_height[i], 0, 0);
+        char codepoint = (char)(i+ASCII_OFFSET);
+        bitmap[i] = stbtt_GetCodepointBitmap(&font, 0, scale, codepoint, &bitmap_width[i], &bitmap_height[i], 0, 0);
         max_bitmap_width = bitmap_width[i] > max_bitmap_width ? bitmap_width[i] : max_bitmap_width;
         max_bitmap_height = bitmap_height[i] > max_bitmap_height ? bitmap_height[i] : max_bitmap_height;
+
+        stbtt_GetCodepointHMetrics(&font, codepoint, &bitmap_advance[i], 0);
+        bitmap_advance[i] *= scale;
+        
     }
 
     EndTempArena(&file_arena);
@@ -160,6 +203,7 @@ int main()
     
     // NOTE: Alloc space for the final font atlas
     u32 *font_atlas = (u32 *)ArenaPush(&memory, atlas_size);
+    Rectf *atlas_coord = (Rectf *)ArenaPush(&memory, atlas_col*atlas_rows*sizeof(Rectf));
     
     // NOTE: Generate the final font atlas texture
     u32 *row_ptr = font_atlas;
@@ -168,8 +212,10 @@ int main()
         u32 *col_ptr = row_ptr;
         for(i32 col = 0; col < atlas_col; ++col)
         {
-            i32 bitmap_index = (row*atlas_col+col);
-            WriteU8Texture(col_ptr, atlas_width, bitmap[bitmap_index], bitmap_width[bitmap_index], bitmap_height[bitmap_index]);
+            i32 index = (row*atlas_col+col);
+            WriteU8Texture(col_ptr, atlas_width, bitmap[index], bitmap_width[index], bitmap_height[index]);
+            WriteTextureCoordinates(atlas_coord, index, col, row, max_bitmap_width, max_bitmap_height,
+                                    atlas_width, atlas_height, bitmap_width[index], bitmap_height[index]);
             
             col_ptr += max_bitmap_width;
         }
@@ -178,6 +224,18 @@ int main()
 
     stbi_write_bmp("font_atlas.bmp", atlas_width, atlas_height, 4, font_atlas);
     printf("atlas was generated\n");
+    
+    FILE *metadata = fopen("font_atlas.data", "w");
+    
+    fprintf(metadata, "ascent:%d\ndescent:%d\nlinegap:%d\n", bitmap_ascent, bitmap_descent, bitmap_linegap); 
+    
+    for(i32 i = 0; i < NUM_OF_CHAR; ++i)
+    {
+        v2f min = atlas_coord[i].min;
+        v2f max = atlas_coord[i].max;
+        fprintf(metadata, "min %f %f max %f %f | adv:%d\n", min.x, min.y, max.x, max.y, bitmap_advance[i]); 
+    }
+    printf("metadata was generated\n");
 
     return 0;
 }
