@@ -124,7 +124,7 @@ void WriteTextureCoordinates(Rectf *coords, u32 coord_index, u32 col, u32 row, u
                              u32 atlas_width, u32 atlas_height, u32 width, u32 height)
 {
     v2f min = {col*max_width, row*max_height};
-    v2f max = {min.x+width, min.y+height};
+    v2f max = {min.x+max_width, min.y+max_height};
     
     Rectf result = {};
     
@@ -147,7 +147,8 @@ int main()
     // NOTE: Generate bitmap_glyps from file
     TempArena file_arena = BeginTempArena(&memory); 
     
-    FILE *font_file = fopen("fonts/UbuntuMono-Regular.ttf", "rb");
+    //FILE *font_file = fopen("fonts/UbuntuMono-Regular.ttf", "rb");
+    FILE *font_file = fopen("c:/Windows/Fonts/Arial.ttf", "rb");
     fseek(font_file, 0, SEEK_END);
     int file_size = ftell(font_file);
     fseek(font_file, 0, SEEK_SET);
@@ -160,7 +161,9 @@ int main()
     stbtt_fontinfo font;
     stbtt_InitFont(&font, ttf_buffer, stbtt_GetFontOffsetForIndex(ttf_buffer, 0));
    
-    f32 scale = stbtt_ScaleForPixelHeight(&font, 200);
+    u32 max_bitmap_width = 200;
+    u32 max_bitmap_height = 200;
+    f32 scale = stbtt_ScaleForPixelHeight(&font, max_bitmap_height);
 
     u8 *bitmap[NUM_OF_CHAR];
     i32 bitmap_width[NUM_OF_CHAR];
@@ -173,22 +176,16 @@ int main()
     bitmap_ascent *= scale;
     bitmap_descent *= scale;
     bitmap_linegap *= scale;
-    
-    u32 max_bitmap_width = 0;
-    u32 max_bitmap_height = 0;
 
     for(int i = 0; i < NUM_OF_CHAR; ++i)
     {
         char codepoint = (char)(i+ASCII_OFFSET);
         bitmap[i] = stbtt_GetCodepointBitmap(&font, 0, scale, codepoint, &bitmap_width[i], &bitmap_height[i], 0, 0);
-        max_bitmap_width = bitmap_width[i] > max_bitmap_width ? bitmap_width[i] : max_bitmap_width;
-        max_bitmap_height = bitmap_height[i] > max_bitmap_height ? bitmap_height[i] : max_bitmap_height;
 
         stbtt_GetCodepointHMetrics(&font, codepoint, &bitmap_advance[i], 0);
         bitmap_advance[i] *= scale;
         
     }
-
     EndTempArena(&file_arena);
     
     i32 atlas_col = 16;
@@ -227,13 +224,18 @@ int main()
     
     FILE *metadata = fopen("font_atlas.data", "w");
     
-    fprintf(metadata, "ascent:%d\ndescent:%d\nlinegap:%d\n", bitmap_ascent, bitmap_descent, bitmap_linegap); 
+    fprintf(metadata, "num_char %d\nascent %d\ndescent %d\nlinegap %d\nadvance %d\n", NUM_OF_CHAR, bitmap_ascent, bitmap_descent, bitmap_linegap, bitmap_advance[0]); 
+    fprintf(metadata, "max_width %d\nmax_height %d\n", max_bitmap_width, max_bitmap_height); 
     
-    for(i32 i = 0; i < NUM_OF_CHAR; ++i)
+    for(i32 row = atlas_rows-1; row >= 0; --row)
     {
-        v2f min = atlas_coord[i].min;
-        v2f max = atlas_coord[i].max;
-        fprintf(metadata, "min %f %f max %f %f | adv:%d\n", min.x, min.y, max.x, max.y, bitmap_advance[i]); 
+        for(i32 col = 0; col < atlas_col; ++col)
+        {
+            i32 i = row*atlas_col+col;
+            v2f min = atlas_coord[i].min;
+            v2f max = atlas_coord[i].max;
+            fprintf(metadata, "min %f %f max %f %f\n", min.x, min.y, max.x, max.y); 
+        }
     }
     printf("metadata was generated\n");
 
